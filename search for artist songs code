@@ -1,0 +1,4 @@
+import lyricsgenius 
+genius = lyricsgenius.Genius('genius client access token')
+artist = genius.search_artist('your artist name')
+print(artist.songs)
