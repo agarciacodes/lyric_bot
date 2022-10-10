@@ -1,0 +1,176 @@
+Hello and thank you for visiting the lyric bot repository. Below are intstructions on how you can build your own twitter lyric bot. 
+Before starting, ensure you have Python 3.8 on your computer
+The necessary libraries are: lyricsgenius, random, tweepy
+The article I used for reference: https://medium.com/@mahibhosain98/creating-a-lyrics-bot-on-twitter-with-python3-and-aws-lambda-1e22743dc3b7
+
+First, choose the artist that you want to tweet lyrics from.
+Create the twitter account of your lyric bot.
+Login into developer.twitter.com and create an app. There is an approval process, however since we're only using the Twitter API for a lyric bot, it will not take long.
+When approved, go to your developer portal and create an app with read and write permissions. 
+Go to apps > app name > Keys and Tokens
+Copy and paste these keys some where safe.
+
+Go to Amazon Web Services (AWS) and create an account.  Remember your sign-in info
+Go to the Genius API (https://docs.genius.com/#/getting-started-h1) and create an API client
+   - ensure you can see your Genius Client Secret, Client Access Token, and Client ID
+
+Next, open a python script. Name it main.py
+Import the libraries, if necessary pip install the libraries
+Create a dictionary of Twitter API keys:
+
+  keys = {
+	'CONSUMER_API_KEY': 'CONSUMER_API_KEY_HERE',
+	'CONSUMER_API_SECRET_KEY': 'CONSUMER_API_SECRECT_KEY',
+	'ACCESS_TOKEN': 'ACCESS_TOKEN',
+	'ACCESS_TOKEN_SECRET': 'ACCESS_TOKEN_SECRET'}
+  
+Open another python script to generate a list of your artist's songs. Enter the following code:
+
+  import lyricsgenius
+  genius = lyricsgenius.Genius('GENIUS_CLIENT_ACCESS_TOKEN')
+  artist = genius.search_artist('your artist's name)
+  print(artist.songs)
+  
+The script should print out a list of your chosen artist's songs.
+Copy the list of songs and append it to an array in the main.py file
+
+  all_songs = ['title1', 'title2',...'titleX']
+  
+In the main.py file, write the following code. This code will choose a random song from your artist and lyrics to that song
+
+  def get_raw_lyrics():
+    genius_client_access_token = 'genius_client_access_token_here'
+    genius = lyricsgenius.Genius(genius_client_access_token)
+    random_song_title = random.choice(all_songs)
+    lyrics = genius.search_song(random_song_title, 'artist name').lyrics
+    song = random_song_title
+    return lyrics, song
+    
+Cleaning the lyrics up, getting rid of characters like: [ ] \\ XXX. Write the following code in main.py:
+
+  def  get_tweet_from(lyrics):
+    lines = lyrics.split('\n')
+    for index in range(len(lines)):
+      if lines[index] == "" or "[" in lines[index]:
+        lines[index] = "XXX"
+    lines = [i for i in lines if i != "XXX"]
+    random_num = random.randrange(0, len(lines)-1)
+    tweet = lines[random_num] + "\n" + lines[random_num + 1]
+    tweet = tweet.replace("\\", "")
+    return tweet
+    
+ The next function is for AWS. This function is used to call the last two functions to assumble the tweet, and post it using the Tweepy API.
+ Write the following code at the end of your main.py:
+ 
+  def handler(event, context):
+    auth = tweepy.OauthHandler(
+      keys['CONSUMER_API_KEY']
+      keys['CONSUMER_API_SECRET_KEY']
+      )
+    auth.set_access_token(
+      keys['ACCESS_TOKEN']
+      keys['ACCESS_TOKEN_SECRECT']
+      )
+    api = tweepy.API(auth)
+    lyrics, song = get_raw_lyrics()
+    tweet = get_tweet_from(lyrics)
+    status = api.update_status(tweet)
+    return tweet
+    
+Creating a AWS Lambda function:
+From AWS console, search 'Lambda' and press enter
+Click 'create function' and ensure 'author from scratch is enabled'
+Name the function
+Under 'permission' > 'execution role', select 'create new role with basic Lambda permission' which is under 'Change default execution role'
+Ensure that python3.8 is enabled for 'Runtime'
+Hit 'create function'
+
+Create a layer for the dependencies (your python packages):
+In AWS console, search and enter "Cloud9'
+'Create anew environment', name it, add description
+Keep default settings, Amazon Linux 2, 'next step'
+Click 'create environment'
+
+Go back to AWS console and search/enter 'iam'
+On the left, select 'policies'
+Click 'create policy'
+Select the JSON tab and enter the following code:
+
+{
+    "Version": "2012-10-17"
+    "Statement": [
+      {
+        "Sid": "VisualEditor0",
+        "Effect": "Allow",
+        "Action": "lambda:PublishLayerVersion",
+        "Resource": "*"
+       }
+     ]
+}
+
+Select 'Next: tags"
+Select 'Next: review'
+Name the role, description optional
+Select 'create policy'
+In the IAM homepage, click 'Roles'
+Select 'create role'
+Ensure that 'AWS Service is selected for trusted entity
+Select 'EC2' for use case
+Select 'next'
+In the search bar, type and select the policy that was created
+Selext the check box for your policy and click'next'
+Name the role, description optional
+Click 'create role'
+
+In the AWS Console search bar, search/enter 'EC2'
+Select 'Instances(running)'
+Select the layer you created
+Under 'Actions', go to 'security' > 'modify IAM role'
+Select the role you created and 'save'
+
+In AWS Console searchbar, go back to 'Cloud9'
+Open the layer in the IDE, it should show a terminal
+Enter the following command: sudo amazon-linux-extras install python3.8
+Press enter
+Once installed, enter the following command: curl -0 http://bootstrap.pypa.io/get-pip.py 
+Press enter
+Enter the following command: python3.8 get-pip.py --user
+Press enter
+Once installed, make a directory 'python': mkdir python
+Install dependencies into the directory:
+  python3.8 -m pip install lyricsgenius -t python
+  python3.8 -m pip install tweepy -t python
+Create a zip folder: zip -r layer.zip python
+Publish the new layer: aws lambda publish-layer-version --layer-name lambda-layer-name-here --zip file fileb://layer_name.zip --compatible runtimes python3.8 --region us-east-1
+
+Putting it all together!
+In the AWS Lambda dashboard, click on your function
+Select custom layer, choose your layer, version 1
+Click add
+In the code source, copy and paste your code from your main.py file 
+Press deploy
+In runtime settings, ensure that the 'Handler' section is 'name_of_pythonfile_in_AWS.your_handler_function_name'
+Ensure that the runtime settings in your lambda match the layer
+Create a new test, delete the JSON code, and test the function. It should issue a tweet
+
+To ensure that your bot continuously tweets at an interval, click 'add trigger' in the lambda function
+Select 'Cloudwatch Events'
+Create new rule
+Enter a name and description, click schedule expression
+Enter a nae and description, click schedule expression
+Enter how often you want your bot to tweet: rate(X hours)
+
+Congratulations on your lyric bot!!
+
+To watch your function: In AWS console search 'Cloudwatch'
+On the left, go to 'logs' > 'log groups'
+Click on your function
+
+
+
+        
+
+ 
+
+
+
